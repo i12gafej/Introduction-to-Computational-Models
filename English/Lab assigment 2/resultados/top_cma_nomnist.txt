@@ -1,0 +1,15 @@
+Top 1:
+eta: 0.0030973359637957994, mu: 0.6214200380771884, layers: 2, neurons: 16, offline: 0, error_function: 0, train_mean: 0.90085, train_std: 0.0591776, test_mean: 0.901531, test_std: 0.0607945
+
+Top 2:
+eta: 0.0030976928735368843, mu: 0.6195818981261678, layers: 2, neurons: 16, offline: 0, error_function: 0, train_mean: 0.90085, train_std: 0.0591696, test_mean: 0.901531, test_std: 0.0607857
+
+Top 3:
+eta: 0.0031056606557642906, mu: 0.6129335778103319, layers: 2, neurons: 16, offline: 0, error_function: 0, train_mean: 0.900848, train_std: 0.0589916, test_mean: 0.901531, test_std: 0.0605875
+
+Top 4:
+eta: 0.0031018351601752882, mu: 0.6258829700546163, layers: 2, neurons: 16, offline: 0, error_function: 0, train_mean: 0.900849, train_std: 0.0590764, test_mean: 0.901531, test_std: 0.0606819
+
+Top 5:
+eta: 0.0031006037477052857, mu: 0.6225711766589952, layers: 2, neurons: 16, offline: 0, error_function: 0, train_mean: 0.900849, train_std: 0.0591041, test_mean: 0.901531, test_std: 0.0607127
+
