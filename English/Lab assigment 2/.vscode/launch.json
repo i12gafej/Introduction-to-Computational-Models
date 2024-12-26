@@ -39,7 +39,7 @@
             "program": "${workspaceFolder}/bin/${fileBasenameNoExtension}",
             "args": ["-t", "./dat/train_xor.dat", "-T", "./dat/test_xor.dat", 
                     "-i", "1000", 
-                    "-l", "1", "-h", "7", 
+                    "-l", "2", "-h", "8", 
                     "-e", "0.1", "-m", "0.5","-o", "-f", "1"],
             "cwd": "${fileDirname}",
             "environment": [],

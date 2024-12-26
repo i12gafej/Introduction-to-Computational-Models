@@ -155,11 +155,11 @@ void MultilayerPerceptron::forwardPropagate() {
                 net += layers[i].neurons[j].w[k] * layers[i-1].neurons[k-1].out; // is multiplied by the output 
                                                                                 // of the previous layer and summed together
             }
-            layers[i].neurons[j].out = (i == nOfLayers - 1 && useSoftmax)
+            layers[i].neurons[j].out = (i == nOfLayers - 1 && (useSoftmax || useCrossEntropy))
                                        ? net  // Save net for softmax
                                        : 1.0 / (1.0 + exp(-net));  // Sigmoid
         }
-        if (i == nOfLayers - 1 && useSoftmax) {
+        if (i == nOfLayers - 1 && (useSoftmax || useCrossEntropy)) {
             applySoftmax(layers[i]);
         }
     }
@@ -169,8 +169,10 @@ void MultilayerPerceptron::forwardPropagate() {
 // Calculate de Cross Entropy error
 double MultilayerPerceptron::calculateCrossEntropyError(double* target) {
     double error = 0.0;
+    const double epsilon = 1e-12;  // Small value to avoid log(0)
     for (int i = 0; i < layers[nOfLayers - 1].nOfNeurons; i++) {
         double output = layers[nOfLayers - 1].neurons[i].out;
+        output = std::max(epsilon, std::min(1.0 - epsilon, output));  // Clamp output
         error -= target[i] * log(output);
     }
     return error;
@@ -197,7 +199,11 @@ double MultilayerPerceptron::obtainError(double* target) {
 void MultilayerPerceptron::backpropagateError(double* target) {
 	for(int j = 0; j < layers[nOfLayers - 1].nOfNeurons; j++){ // For each output neuron
         double out = layers[nOfLayers - 1].neurons[j].out;     // is obtained the output
-        layers[nOfLayers - 1].neurons[j].delta = 2 * (target[j] - out) * out * (1.0 - out); // And calculated the delta values
+        if(useCrossEntropy){ // If we are using Cross Entropy
+            layers[nOfLayers - 1].neurons[j].delta = (target[j] - out) * out * (1.0 - out); //out - target[j];//
+        } else {
+            layers[nOfLayers - 1].neurons[j].delta = 2 * (target[j] - out) * out * (1.0 - out); // And calculated the delta values
+        }
     }
     // Backpropagate through hidden layers
     for(int i = nOfLayers - 2; i > 0; i--){             // From second last layer to the first hidden layer

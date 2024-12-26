@@ -1,0 +1,2 @@
+eta,mu,layers,neurons,offline,error_function,train_mean,train_std,test_mean,test_std
+0.01,0.1,1,2,0,0,0.124139,0.114145,0.124139,0.114145
