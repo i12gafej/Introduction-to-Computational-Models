@@ -108,8 +108,6 @@ int main(int argc, char **argv) {
         // Set parameters (NEW)
         mlp.eta = eta;
         mlp.mu = mu;
-        mlp.useSoftmax = useSoftmax;
-        mlp.useCrossEntropy = useCrossEntropy;
 
         // Read training and test data (NEW)
         Dataset *trainDataset = readData(tvalue); // Training file
@@ -123,6 +121,28 @@ int main(int argc, char **argv) {
             topology[i] = numNeuronsHidden;
         }
         topology[layers-1] = trainDataset->nOfOutputs;
+
+        // Default configuration of the use of softmax and cross entropy
+        if (trainDataset->nOfOutputs > 2) {
+            mlp.useSoftmax = true;
+            mlp.useCrossEntropy = true;
+        }
+        else if (trainDataset->nOfOutputs <= 2) {
+            mlp.useCrossEntropy = false;
+            mlp.useSoftmax = false;
+        }
+
+        mlp.useCrossEntropy = useCrossEntropy;
+        
+        // When using softmax, it's mandatory to use cross entropy
+        if (useSoftmax){
+            mlp.useCrossEntropy = true;
+            mlp.useSoftmax = true;
+        } else if (useCrossEntropy){
+            mlp.useCrossEntropy = true;
+            mlp.useSoftmax = false;
+        }
+
 
         // Initialize the network using the topology vector
         mlp.initialize(layers, topology);
@@ -180,7 +200,7 @@ int main(int argc, char **argv) {
         cout << "************" << endl;
         cout << "Train error (Mean +- SD): " << averageTrainError << " +- " << stdTrainError << endl;
         cout << "Test  error (Mean +- SD): " << averageTestError << " +- " << stdTestError << endl;
-
+        
         return EXIT_SUCCESS;
     }
     else {

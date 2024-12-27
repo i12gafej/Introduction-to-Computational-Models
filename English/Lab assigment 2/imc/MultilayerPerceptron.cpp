@@ -132,6 +132,7 @@ void MultilayerPerceptron::restoreWeights() {
         }
     }
 }
+
 //----------------------------------
 // Apply the softmax function to the output layer
 void MultilayerPerceptron::applySoftmax(Layer& layer) {
@@ -155,12 +156,20 @@ void MultilayerPerceptron::forwardPropagate() {
                 net += layers[i].neurons[j].w[k] * layers[i-1].neurons[k-1].out; // is multiplied by the output 
                                                                                 // of the previous layer and summed together
             }
-            layers[i].neurons[j].out = (i == nOfLayers - 1 && (useSoftmax || useCrossEntropy))
-                                       ? net  // Save net for softmax
-                                       : 1.0 / (1.0 + exp(-net));  // Sigmoid
+            if (i == nOfLayers - 1) {
+                layers[i].neurons[j].out = exp(net);
+            } else {
+                layers[i].neurons[j].out = 1.0 / (1.0 + exp(-net)); // Sigmoid
+            }
         }
-        if (i == nOfLayers - 1 && (useSoftmax || useCrossEntropy)) {
-            applySoftmax(layers[i]);
+        if (i == nOfLayers - 1) {
+            double sumExp = 0.0;
+            for (int j = 0; j < layers[i].nOfNeurons; j++) {
+                sumExp += layers[i].neurons[j].out;
+            }
+            for (int j = 0; j < layers[i].nOfNeurons; j++) {
+                layers[i].neurons[j].out /= sumExp;
+            }
         }
     }
 }
@@ -168,14 +177,12 @@ void MultilayerPerceptron::forwardPropagate() {
 // ------------------------------
 // Calculate de Cross Entropy error
 double MultilayerPerceptron::calculateCrossEntropyError(double* target) {
-    double error = 0.0;
-    const double epsilon = 1e-12;  // Small value to avoid log(0)
+    double loss = 0.0;
     for (int i = 0; i < layers[nOfLayers - 1].nOfNeurons; i++) {
         double output = layers[nOfLayers - 1].neurons[i].out;
-        output = std::max(epsilon, std::min(1.0 - epsilon, output));  // Clamp output
-        error -= target[i] * log(output);
+        loss -= target[i] * log(output + 1e-8);
     }
-    return error;
+    return loss / layers[nOfLayers - 1].nOfNeurons;
 }
 
 // ------------------------------
@@ -200,9 +207,9 @@ void MultilayerPerceptron::backpropagateError(double* target) {
 	for(int j = 0; j < layers[nOfLayers - 1].nOfNeurons; j++){ // For each output neuron
         double out = layers[nOfLayers - 1].neurons[j].out;     // is obtained the output
         if(useCrossEntropy){ // If we are using Cross Entropy
-            layers[nOfLayers - 1].neurons[j].delta = (target[j] - out) * out * (1.0 - out); //out - target[j];//
+            layers[nOfLayers - 1].neurons[j].delta = out - target[j]; // The delta value is the difference between the output and the target
         } else {
-            layers[nOfLayers - 1].neurons[j].delta = 2 * (target[j] - out) * out * (1.0 - out); // And calculated the delta values
+            layers[nOfLayers - 1].neurons[j].delta = - 2 * (target[j] - out) * out * (1.0 - out); // And calculated the delta values
         }
     }
     // Backpropagate through hidden layers
@@ -242,32 +249,46 @@ void MultilayerPerceptron::weightAdjustmentBatch(int numPatterns) {
     for (int i = 1; i < nOfLayers; i++) {
         for (int j = 0; j < layers[i].nOfNeurons; j++) {
             for (int k = 0; k <= layers[i - 1].nOfNeurons; k++) {
-                layers[i].neurons[j].w[k] += eta * (layers[i].neurons[j].deltaW[k] / numPatterns) +
-                                             mu * layers[i].neurons[j].lastDeltaW[k];
-                layers[i].neurons[j].lastDeltaW[k] = layers[i].neurons[j].deltaW[k];
+                double prev_out = (k == 0) ? 1.0 : layers[i - 1].neurons[k - 1].out;
+                layers[i].neurons[j].w[k] -= (eta * layers[i].neurons[j].deltaW[k] / numPatterns)
+                                            + (mu * layers[i].neurons[j].lastDeltaW[k]);
+                layers[i].neurons[j].lastDeltaW[k] = eta * layers[i].neurons[j].deltaW[k] / numPatterns;
                 layers[i].neurons[j].deltaW[k] = 0.0;  // Reset for next batch
             }
         }
     }
 }
-
 // ------------------------------
-// Update the network weights, from the first layer to the last one
+// Update the weights with momentum
 void MultilayerPerceptron::weightAdjustment() {
-	for(int i = 1; i < nOfLayers; i++){                         // Start from the first hidden layer
-        for(int j = 0; j < layers[i].nOfNeurons; j++){          // Through each neuron
-            for(int k = 0; k <= layers[i - 1].nOfNeurons; k++){ // and through each weight icluding bias with the = sign
-                // Apply weight change
-                layers[i].neurons[j].w[k] += eta * layers[i].neurons[j].deltaW[k]
-                                             + mu * layers[i].neurons[j].lastDeltaW[k];
-                // Store this delta for momentum use
-                layers[i].neurons[j].lastDeltaW[k] = layers[i].neurons[j].deltaW[k];
-                // Reset deltaW for the next pattern
-                layers[i].neurons[j].deltaW[k] = 0.0;
+    for (int i = 1; i < nOfLayers; i++) {
+        for (int j = 0; j < layers[i].nOfNeurons; j++) {
+            for (int k = 0; k <= layers[i - 1].nOfNeurons; k++) {
+                double prev_out = (k == 0) ? 1.0 : layers[i - 1].neurons[k - 1].out;
+                layers[i].neurons[j].w[k] -= eta * layers[i].neurons[j].delta * prev_out
+                                            + mu * layers[i].neurons[j].lastDeltaW[k];
+                layers[i].neurons[j].lastDeltaW[k] = eta * layers[i].neurons[j].delta * prev_out;
             }
         }
     }
 }
+// // ------------------------------
+// // Update the network weights, from the first layer to the last one
+// void MultilayerPerceptron::weightAdjustment() {
+// 	for(int i = 1; i < nOfLayers; i++){                         // Start from the first hidden layer
+//         for(int j = 0; j < layers[i].nOfNeurons; j++){          // Through each neuron
+//             for(int k = 0; k <= layers[i - 1].nOfNeurons; k++){ // and through each weight icluding bias with the = sign
+//                 // Apply weight change
+//                 layers[i].neurons[j].w[k] -= eta * layers[i].neurons[j].deltaW[k]
+//                                              + mu * layers[i].neurons[j].lastDeltaW[k];
+//                 // Store this delta for momentum use
+//                 layers[i].neurons[j].lastDeltaW[k] = layers[i].neurons[j].deltaW[k];
+//                 // Reset deltaW for the next pattern
+//                 layers[i].neurons[j].deltaW[k] = 0.0;
+//             }
+//         }
+//     }
+// }
 
 // ------------------------------
 // Print the network, i.e. all the weight matrices
@@ -342,7 +363,7 @@ void MultilayerPerceptron::trainOffline(Dataset *trainDataset) {
     }
 
     // Ajustar los pesos acumulados
-    weightAdjustment();
+    weightAdjustmentBatch(trainDataset->nOfPatterns);
 }
 
 // ------------------------------
@@ -439,7 +460,7 @@ void MultilayerPerceptron::runOnlineBackPropagation(Dataset * trainDataset, Data
 		countTrain++;
 
 		cout << "Iteration " << countTrain << "\t Training error: " << trainError << "\t Test error: " << testError << endl;
-
+        //printNetwork();
 	} while ( countTrain<maxiter );
 
 	cout << "NETWORK WEIGHTS" << endl;
@@ -472,69 +493,70 @@ void MultilayerPerceptron::runOnlineBackPropagation(Dataset * trainDataset, Data
 // Run the traning algorithm for a given number of epochs, using trainDataset
 // Once finished, check the performance of the network in testDataset
 // Both training and test MSEs should be obtained and stored in errorTrain and errorTest
-void MultilayerPerceptron::runOfflineBackPropagation(Dataset *trainDataset, Dataset *testDataset, int maxiter, double *errorTrain, double *errorTest) {
-    int countTrain = 0;
+void MultilayerPerceptron::runOfflineBackPropagation(Dataset * trainDataset, Dataset * testDataset, int maxiter, double *errorTrain, double *errorTest)
+{
+	int countTrain = 0;
 
-    // Asignación aleatoria de pesos
-    randomWeights();
+	// Random assignment of weights (starting point)
+	randomWeights();
 
-    double minTrainError = 0;
-    int iterWithoutImproving = 0;
-    double testError = 0;
+	double minTrainError = 0;
+	int iterWithoutImproving;
+	double testError = 0;
 
-    // Bucle de aprendizaje
-    do {
-        // Entrenar en modo offline
-        trainOffline(trainDataset);
+	// Learning
+	do {
 
-        // Evaluar error de entrenamiento
-        double trainError = test(trainDataset);
-        if (countTrain == 0 || trainError < minTrainError) {
-            minTrainError = trainError;
-            copyWeights();
-            iterWithoutImproving = 0;
-        } else if ((trainError - minTrainError) < 0.00001) {
-            iterWithoutImproving = 0;
-        } else {
-            iterWithoutImproving++;
-        }
+		trainOffline(trainDataset);
+		double trainError = test(trainDataset);
+        double testError = test(testDataset);
+		if(countTrain==0 || trainError < minTrainError){
+			minTrainError = trainError;
+			copyWeights();
+			iterWithoutImproving = 0;
+		}
+		else if( (trainError-minTrainError) < 0.00001)
+			iterWithoutImproving = 0;
+		else
+			iterWithoutImproving++;
 
-        if (iterWithoutImproving == 50) {
-            cout << "We exit because the training is not improving!!" << endl;
-            restoreWeights();
-            countTrain = maxiter;
-        }
+		if(iterWithoutImproving==50){
+			cout << "We exit because the training is not improving!!"<< endl;
+			restoreWeights();
+			countTrain = maxiter;
+		}
 
-        countTrain++;
-        cout << "Iteration " << countTrain << "\t Training error: " << trainError << endl;
 
-    } while (countTrain < maxiter);
+		countTrain++;
 
-    // Mostrar pesos finales y resultados de prueba
-    cout << "NETWORK WEIGHTS" << endl;
-    cout << "===============" << endl;
-    printNetwork();
+		cout << "Iteration " << countTrain << "\t Training error: " << trainError << "\t Test error: " << testError << endl;
 
-    cout << "Desired output Vs Obtained output (test)" << endl;
-    cout << "=========================================" << endl;
-    for (int i = 0; i < testDataset->nOfPatterns; i++) {
-        double *prediction = new double[testDataset->nOfOutputs];
+	} while ( countTrain<maxiter );
 
-        // Alimentar las entradas y propagar
-        feedInputs(testDataset->inputs[i]);
-        forwardPropagate();
-        getOutputs(prediction);
+	cout << "NETWORK WEIGHTS" << endl;
+	cout << "===============" << endl;
+	printNetwork();
 
-        for (int j = 0; j < testDataset->nOfOutputs; j++)
-            cout << testDataset->outputs[i][j] << " -- " << prediction[j] << " ";
-        cout << endl;
+	cout << "Desired output Vs Obtained output (test)" << endl;
+	cout << "=========================================" << endl;
+	for(int i=0; i<testDataset->nOfPatterns; i++){
+		double* prediction = new double[testDataset->nOfOutputs];
 
-        delete[] prediction;
-    }
+		// Feed the inputs and propagate the values
+		feedInputs(testDataset->inputs[i]);
+		forwardPropagate();
+		getOutputs(prediction);
+		for(int j=0; j<testDataset->nOfOutputs; j++)
+			cout << testDataset->outputs[i][j] << " -- " << prediction[j] << " ";
+		cout << endl;
+		delete[] prediction;
 
-    testError = test(testDataset);
-    *errorTest = testError;
-    *errorTrain = minTrainError;
+	}
+
+	testError = test(testDataset);
+	*errorTest=testError;
+	*errorTrain=minTrainError;
+
 }
 
 // Optional Kaggle: Save the model weights in a textfile
