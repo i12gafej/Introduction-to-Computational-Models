@@ -106,6 +106,9 @@ public:
 	// Test the network with a dataset and return the MSE
 	double test(util::Dataset* dataset);
 
+	// Calculate the CCR
+	double calculateCorrectClassifiedPatterns(util::Dataset* dataset);
+
 	// Obtain the predicted outputs for a dataset
 	void predict(util::Dataset* testDataset);
 

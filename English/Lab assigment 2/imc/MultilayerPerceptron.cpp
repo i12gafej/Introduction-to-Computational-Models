@@ -148,28 +148,22 @@ void MultilayerPerceptron::applySoftmax(Layer& layer) {
 
 // ------------------------------
 // Calculate and propagate the outputs of the neurons, from the first layer until the last one -->-->
+// Forward propagation with softmax in the output layer
 void MultilayerPerceptron::forwardPropagate() {
-	for(int i = 1; i < nOfLayers; i++){                 // Start from the first hidden layer
-        for(int j = 0; j < layers[i].nOfNeurons; j++){  // Through each neuron
-            double net = layers[i].neurons[j].w[0];     // Net is initialized with the bias
-            for(int k = 1; k <= layers[i-1].nOfNeurons; k++){  // Each weight
-                net += layers[i].neurons[j].w[k] * layers[i-1].neurons[k-1].out; // is multiplied by the output 
-                                                                                // of the previous layer and summed together
+    for (int i = 1; i < nOfLayers; i++) {
+        for (int j = 0; j < layers[i].nOfNeurons; j++) {
+            double net = layers[i].neurons[j].w[0]; // Bias
+            for (int k = 1; k <= layers[i - 1].nOfNeurons; k++) {
+                net += layers[i].neurons[j].w[k] * layers[i - 1].neurons[k - 1].out;
             }
-            if (i == nOfLayers - 1) {
-                layers[i].neurons[j].out = exp(net);
-            } else {
-                layers[i].neurons[j].out = 1.0 / (1.0 + exp(-net)); // Sigmoid
+            if (i == nOfLayers - 1 || useSoftmax) { // Output layer
+                layers[i].neurons[j].out = net; // Softmax applied later
+            } else { // Hidden layers use sigmoid
+                layers[i].neurons[j].out = 1.0 / (1.0 + exp(-net));
             }
         }
-        if (i == nOfLayers - 1) {
-            double sumExp = 0.0;
-            for (int j = 0; j < layers[i].nOfNeurons; j++) {
-                sumExp += layers[i].neurons[j].out;
-            }
-            for (int j = 0; j < layers[i].nOfNeurons; j++) {
-                layers[i].neurons[j].out /= sumExp;
-            }
+        if (i == nOfLayers - 1 || useSoftmax) { // Apply softmax in the output layer
+            applySoftmax(layers[i]);
         }
     }
 }
@@ -204,26 +198,35 @@ double MultilayerPerceptron::obtainError(double* target) {
 // ------------------------------
 // Backpropagate the output error wrt a vector passed as an argument, from the last layer to the first one <--<--
 void MultilayerPerceptron::backpropagateError(double* target) {
-	for(int j = 0; j < layers[nOfLayers - 1].nOfNeurons; j++){ // For each output neuron
-        double out = layers[nOfLayers - 1].neurons[j].out;     // is obtained the output
-        if(useCrossEntropy){ // If we are using Cross Entropy
-            layers[nOfLayers - 1].neurons[j].delta = out - target[j]; // The delta value is the difference between the output and the target
-        } else {
-            layers[nOfLayers - 1].neurons[j].delta = - 2 * (target[j] - out) * out * (1.0 - out); // And calculated the delta values
-        }
-    }
-    // Backpropagate through hidden layers
-    for(int i = nOfLayers - 2; i > 0; i--){             // From second last layer to the first hidden layer
-        for(int j = 0; j < layers[i].nOfNeurons; j++){  // Through each neuron
-            double deltaSum = 0.0;                     // Initialize the sum of the deltas
-            for(int k = 0; k < layers[i+1].nOfNeurons; k++){ // For each neuron in the next layer
-                deltaSum += layers[i+1].neurons[k].delta * layers[i+1].neurons[k].w[j+1]; 
-                // It accumulated the prodcto of the delta with the j-th weight of the next layer (bias is not included)
+	// Output layer error (Softmax derivative)
+    for (int j = 0; j < layers[nOfLayers - 1].nOfNeurons; j++) {
+        double out_j = layers[nOfLayers - 1].neurons[j].out;
+        double deltaSum = 0.0;
+
+        for (int i = 0; i < layers[nOfLayers - 1].nOfNeurons; i++) {
+            double out_i = layers[nOfLayers - 1].neurons[i].out;
+            double derivative_error = useCrossEntropy ? 
+                -(target[i] / out_i) :                       // Cross-Entropy derivative
+                -2 * (target[i] - out_i) * out_i * (1.0 - out_i); // MSE derivative
+
+            if (i == j) { // Case i == j
+                deltaSum += derivative_error * out_j * (1.0 - out_j);
+            } else { // Case i != j
+                deltaSum += derivative_error * out_j * (-out_i);
             }
-            double out = layers[i].neurons[j].out;     
-            layers[i].neurons[j].delta = deltaSum * out * (1.0 - out);
-            // Delta value of the rest of the neurons is the product of the sum of the deltas, the output and 
-            // the complementary output of the neuron
+        }
+        layers[nOfLayers - 1].neurons[j].delta = deltaSum; // Store the computed delta
+    }
+
+    // Hidden layers error
+    for (int i = nOfLayers - 2; i > 0; i--) {
+        for (int j = 0; j < layers[i].nOfNeurons; j++) {
+            double deltaSum = 0.0;
+            for (int k = 0; k < layers[i + 1].nOfNeurons; k++) {
+                deltaSum += layers[i + 1].neurons[k].delta * layers[i + 1].neurons[k].w[j + 1];
+            }
+            double out = layers[i].neurons[j].out;
+            layers[i].neurons[j].delta = deltaSum * out * (1.0 - out); // Sigmoid derivative
         }
     }
 }
@@ -389,6 +392,51 @@ double MultilayerPerceptron::test(Dataset* testDataset) {
         delete[] prediction;
     }
     return error / testDataset->nOfPatterns;
+}
+
+double MultilayerPerceptron::calculateCorrectClassifiedPatterns(Dataset* dataset) {
+    int correct = 0;  // Contador de patrones correctamente clasificados
+
+    for (int i = 0; i < dataset->nOfPatterns; i++) {
+        // Propaga la entrada hacia adelante
+        feedInputs(dataset->inputs[i]);
+        forwardPropagate();
+
+        // Obtén la salida de la red neuronal
+        double* output = new double[layers[nOfLayers - 1].nOfNeurons];
+        getOutputs(output);
+
+        // Encuentra la clase predicha (índice con el valor más alto)
+        int predicted = 0;
+        double maxOutput = output[0];
+        for (int j = 1; j < layers[nOfLayers - 1].nOfNeurons; j++) {
+            if (output[j] > maxOutput) {
+                maxOutput = output[j];
+                predicted = j;
+            }
+        }
+
+        // Encuentra la clase real (índice con el valor más alto en el target)
+        int actual = 0;
+        double maxTarget = dataset->outputs[i][0];
+        for (int j = 1; j < layers[nOfLayers - 1].nOfNeurons; j++) {
+            if (dataset->outputs[i][j] > maxTarget) {
+                maxTarget = dataset->outputs[i][j];
+                actual = j;
+            }
+        }
+
+        // Si la clase predicha coincide con la real, incrementa el contador
+        if (predicted == actual) {
+            correct++;
+        }
+
+        delete[] output;  // Libera la memoria reservada para la salida
+    }
+
+    // Calcula el CCR como la proporción de clasificaciones correctas
+    //cout << "Correctly Classified Ratio (CCR): " << ccr << " (" << correct << "/" << dataset->nOfPatterns << ")" << endl;
+    return correct;
 }
 
 

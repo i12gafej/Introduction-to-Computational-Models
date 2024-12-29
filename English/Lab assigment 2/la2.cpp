@@ -134,13 +134,10 @@ int main(int argc, char **argv) {
 
         mlp.useCrossEntropy = useCrossEntropy;
         
-        // When using softmax, it's mandatory to use cross entropy
-        if (useSoftmax){
+        // When using Cross Entropy, it's mandatory to use softmax
+        if (useCrossEntropy){
             mlp.useCrossEntropy = true;
             mlp.useSoftmax = true;
-        } else if (useCrossEntropy){
-            mlp.useCrossEntropy = true;
-            mlp.useSoftmax = false;
         }
 
 
@@ -195,11 +192,14 @@ int main(int argc, char **argv) {
         }
         stdTestError = sqrt(stdTestError / 5);
         stdTrainError = sqrt(stdTrainError / 5);
+        double correct = mlp.calculateCorrectClassifiedPatterns(testDataset);
+        double ccr = correct / testDataset->nOfPatterns;
 
         cout << "FINAL REPORT" << endl;
         cout << "************" << endl;
         cout << "Train error (Mean +- SD): " << averageTrainError << " +- " << stdTrainError << endl;
         cout << "Test  error (Mean +- SD): " << averageTestError << " +- " << stdTestError << endl;
+        cout << "Correctly Classified Ratio (CCR): " << ccr << " (" << correct << "/" << testDataset->nOfPatterns << ")" << endl;
         
         return EXIT_SUCCESS;
     }
